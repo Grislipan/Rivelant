@@ -1169,13 +1169,17 @@
     });
   });
 
-  // 6. Formulario de Opiniones y Sugerencias (Validación + Envío a correo)
+  // 6. Formulario de Opiniones y Sugerencias (Validación + Envío estático vía cliente de correo)
   const form = document.getElementById('rivelant-feedback-form');
   const feedbackStatus = document.getElementById('feedback-status');
 
   if (form) {
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', (e) => {
       e.preventDefault();
+
+      const honeypot = (document.getElementById('website_hp')?.value || '').trim();
+      if (honeypot !== '') return;
+
       let valid = true;
 
       const clearError = (id) => {
@@ -1217,13 +1221,6 @@
 
       if (!valid) return;
 
-      const submitBtn = document.getElementById('fb-submit-btn');
-      const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Enviando opinión al correo...';
-      }
-
       const subject = encodeURIComponent(`[Rivelant Web - ${tipo}] Opinión de ${nombre} (${calificacion}★)`);
       const bodyText = encodeURIComponent(
         `Nueva opinión / sugerencia desde la web oficial de Rivelant, S.A. de C.V.\n\n` +
@@ -1236,50 +1233,20 @@
       );
       const mailtoHref = `mailto:contacto@rivelant.com?cc=andreipinedagato321@gmail.com&subject=${subject}&body=${bodyText}`;
 
-      try {
-        const formData = new FormData(form);
-        formData.append('ajax_feedback', '1');
-        const response = await fetch(form.getAttribute('action') || window.location.href, {
-          method: 'POST',
-          body: formData
-        });
-        const data = await response.json();
-
-        if (feedbackStatus) {
-          feedbackStatus.hidden = false;
-          feedbackStatus.className = 'form-alert form-alert--success';
-          feedbackStatus.innerHTML = `
-            <p><strong>¡Gracias por tu mensaje, ${nombre.replace(/[<>&"']/g, '')}!</strong> ${
-            data.message || 'Tu opinión y sugerencia ha sido registrada y procesada para envío al correo de Rivelant.'
-          }</p>
-            <p style="margin-top:10px; font-size:0.88rem;">
-              Destinatario oficial: <strong>contacto@rivelant.com</strong>.
-              <a href="${mailtoHref}" class="btn btn--primary" style="margin-top:10px; padding:8px 18px; min-height:40px; font-size:0.85rem;">
-                Confirmar envío directo en mi cliente de correo
-              </a>
-            </p>
-          `;
-        }
-        form.reset();
-      } catch (_err) {
-        // Fallback directo por cliente de correo si el servidor local no responde JSON
-        if (feedbackStatus) {
-          feedbackStatus.hidden = false;
-          feedbackStatus.className = 'form-alert form-alert--success';
-          feedbackStatus.innerHTML = `
-            <p><strong>¡Mensaje listo para enviar!</strong> Haz clic abajo para despachar tu sugerencia directamente a <strong>contacto@rivelant.com</strong>:</p>
-            <p style="margin-top:10px;">
-              <a href="${mailtoHref}" class="btn btn--primary">Abrir correo y enviar ahora</a>
-            </p>
-          `;
-        }
-        window.location.href = mailtoHref;
-      } finally {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = originalBtnText;
-        }
+      if (feedbackStatus) {
+        const safeName = nombre.replace(/[<>&"']/g, '');
+        feedbackStatus.hidden = false;
+        feedbackStatus.className = 'form-alert form-alert--success';
+        feedbackStatus.innerHTML = `
+          <p><strong>¡Gracias por tu mensaje, ${safeName}!</strong> Tu opinión está lista para enviarse al correo oficial de Rivelant (<strong>contacto@rivelant.com</strong>).</p>
+          <p style="margin-top:10px;">
+            <a href="${mailtoHref}" class="btn btn--primary" style="padding:8px 18px; min-height:40px; font-size:0.85rem;">
+              Abrir correo y enviar ahora
+            </a>
+          </p>
+        `;
       }
+      form.reset();
     });
   }
 
@@ -1349,9 +1316,12 @@
     } catch (_e) {
       // Ignorar si almacenamiento está restringido
     }
-    document.cookie = `rivelant_cookies=${mode}; path=/; max-age=31536000; SameSite=Lax`;
+    document.cookie = `rivelant_cookies=${mode}; max-age=31536000; SameSite=Lax`;
     if (cookieBanner) cookieBanner.classList.remove('is-visible');
   };
+
+  const yearEl = document.getElementById('copyright-year');
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 
   if (cookieBanner) {
     let saved = null;

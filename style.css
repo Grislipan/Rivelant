@@ -385,7 +385,7 @@ h1, h2, h3, h4, .font-heading {
 .hero__pattern {
   position: absolute;
   inset: 0;
-  background-image: url('assets/pattern-botanico.png');
+  background-image: url('./assets/pattern-botanico.png');
   background-size: 560px;
   opacity: 0.055;
   pointer-events: none;

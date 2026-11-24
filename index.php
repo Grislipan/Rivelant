@@ -1,0 +1,1308 @@
+<?php
+/**
+ * Página de Inicio Oficial — Rivelant, S.A. de C.V.
+ * Basada íntegramente en el Manual de Identidad Visual de Rivelant.
+ */
+
+$theme_uri = function_exists('get_template_directory_uri')
+    ? rtrim(get_template_directory_uri(), '/')
+    : '.';
+
+// Cache-busting automático para que navegadores como Brave carguen siempre los últimos cambios
+$style_ver = (string) (@filemtime(__DIR__ . '/style.css') ?: '1');
+$script_ver = (string) (@filemtime(__DIR__ . '/script.js') ?: '1');
+
+$feedback_notice = null;
+
+// Procesamiento de Formulario de Opiniones y Sugerencias (POST / AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rivelant_feedback_submit'])) {
+    $honeypot = trim((string) ($_POST['website_hp'] ?? ''));
+    $nombre = trim(strip_tags((string) ($_POST['nombre'] ?? '')));
+    $correo = trim(filter_var((string) ($_POST['correo'] ?? ''), FILTER_SANITIZE_EMAIL));
+    $telefono = trim(strip_tags((string) ($_POST['telefono'] ?? '')));
+    $tipo = trim(strip_tags((string) ($_POST['tipo'] ?? 'Opinión del producto')));
+    $calificacion = max(1, min(5, (int) ($_POST['calificacion'] ?? 5)));
+    $mensaje = trim(strip_tags((string) ($_POST['mensaje'] ?? '')));
+
+    if ($honeypot !== '') {
+        $result = ['ok' => false, 'message' => 'Envío bloqueado por filtro anti-spam.'];
+    } elseif (mb_strlen($nombre) < 2 || !filter_var($correo, FILTER_VALIDATE_EMAIL) || mb_strlen($mensaje) < 8) {
+        $result = ['ok' => false, 'message' => 'Por favor verifica tu nombre, correo válido y un mensaje de al menos 8 caracteres.'];
+    } else {
+        $destinatarios = 'contacto@rivelant.com, andreipinedagato321@gmail.com';
+        $asunto = sprintf('[Rivelant Web - %s] Nueva opinión de %s (%d/5 estrellas)', $tipo, $nombre, $calificacion);
+        $cuerpo = "Nueva opinión / sugerencia recibida en el portal oficial de Rivelant, S.A. de C.V.\n"
+            . "====================================================================\n\n"
+            . "Nombre: {$nombre}\n"
+            . "Correo electrónico: {$correo}\n"
+            . "Teléfono: " . ($telefono !== '' ? $telefono : 'No proporcionado') . "\n"
+            . "Categoría: {$tipo}\n"
+            . "Calificación: {$calificacion} / 5 estrellas\n"
+            . "Fecha: " . date('Y-m-d H:i:s') . "\n\n"
+            . "Mensaje / Sugerencia:\n{$mensaje}\n";
+
+        $headers = [
+            'From: Portal Web Rivelant <contacto@rivelant.com>',
+            "Reply-To: {$nombre} <{$correo}>",
+            'Content-Type: text/plain; charset=UTF-8'
+        ];
+
+        // shortcut: local JSON log + PHP mail()/mailto fallback when XAMPP sendmail is unconfigured, upgrade to SMTP plugin in production
+        $mail_sent = false;
+        if (function_exists('wp_mail')) {
+            $mail_sent = @wp_mail($destinatarios, $asunto, $cuerpo, $headers);
+        } else {
+            $mail_sent = @mail($destinatarios, $asunto, $cuerpo, implode("\r\n", $headers));
+        }
+
+        $log_file = __DIR__ . '/opiniones_recibidas.json';
+        $existing = file_exists($log_file) ? json_decode((string) file_get_contents($log_file), true) : [];
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+        $existing[] = [
+            'fecha' => date('c'),
+            'nombre' => $nombre,
+            'correo' => $correo,
+            'telefono' => $telefono,
+            'tipo' => $tipo,
+            'calificacion' => $calificacion,
+            'mensaje' => $mensaje,
+            'mail_dispatched' => (bool) $mail_sent
+        ];
+        @file_put_contents($log_file, json_encode($existing, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        $result = [
+            'ok' => true,
+            'mail_sent' => (bool) $mail_sent,
+            'message' => 'Tu opinión y sugerencia ha sido registrada y enviada al buzón oficial de Rivelant (contacto@rivelant.com).'
+        ];
+    }
+
+    if (isset($_POST['ajax_feedback'])) {
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $feedback_notice = $result;
+}
+?><!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rivelant® | Energía Natural para tu Día — Suero Energizante con Moringa y Espirulina</title>
+  <meta name="description" content="Rivelant, S.A. de C.V. Suero energizante funcional 100% natural, libre de cafeína sintética y azúcares dañinos, formulado con Moringa y Espirulina en envase pouch de 500 ml. ¿Listo para comenzar?">
+  <meta name="theme-color" content="#0c3c2d">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,700&family=Montserrat:wght@500;600;700;800&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/style.css?v=<?php echo htmlspecialchars($style_ver, ENT_QUOTES, 'UTF-8'); ?>">
+</head>
+<body>
+  <a href="#contenido-principal" class="skip-link">Saltar al contenido principal</a>
+
+  <!-- Barra de progreso de lectura superior -->
+  <div class="scroll-progress" aria-hidden="true">
+    <div class="scroll-progress__bar" id="scroll-progress-bar"></div>
+  </div>
+
+  <!-- HEADER OFICIAL -->
+  <header class="site-header" id="site-header">
+    <div class="container nav-bar">
+      <a href="#inicio" class="brand-logo" aria-label="Rivelant - Inicio">
+        <svg class="brand-logo__leaf" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <circle cx="32" cy="32" r="30" fill="#0c3c2d" />
+          <path d="M18 39C16 25 27 15 41 16C39 30 30 41 18 39Z" fill="#74c365" />
+          <path d="M46 25C48 39 37 49 23 48C25 34 34 23 46 25Z" fill="#c3d15e" opacity="0.9" />
+          <path d="M20 38C27 31 33 24 40 17" stroke="#0c3c2d" stroke-width="2.4" stroke-linecap="round" />
+        </svg>
+        <div>
+          <span>Rivelant</span>
+          <span class="brand-logo__tag">Energía natural para tu día</span>
+        </div>
+      </a>
+
+      <nav aria-label="Navegación principal">
+        <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Abrir menú de navegación">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <ul class="nav-links" id="nav-links">
+          <li><a href="#inicio" class="nav-link is-active">Inicio</a></li>
+          <li><a href="#empresa" class="nav-link">Empresa</a></li>
+          <li><a href="#antecedentes" class="nav-link">Antecedentes</a></li>
+          <li><a href="#mision-vision" class="nav-link">Misión y Visión</a></li>
+          <li><a href="#equipo" class="nav-link">Organigrama</a></li>
+          <li><a href="#producto" class="nav-link">Producto</a></li>
+          <li><a href="#ingredientes" class="nav-link">¿De qué está hecho?</a></li>
+          <li><a href="#opiniones" class="nav-link">Opiniones</a></li>
+          <li><a href="#contacto" class="nav-link">Contacto</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="#opiniones" class="btn btn--primary" style="padding: 10px 18px; min-height: 44px; font-size: 0.86rem;">
+          ¿Listo para comenzar?
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenido-principal">
+    <!-- 1. HERO PRINCIPAL -->
+    <section class="hero" id="inicio">
+      <div class="hero__pattern" aria-hidden="true"></div>
+      <div class="container hero__grid">
+        <div class="hero__content reveal">
+          <div class="hero__slogan-pill">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            <span>ESLOGAN OFICIAL: «¿LISTO PARA COMENZAR?»</span>
+          </div>
+          <h1 class="hero__title">
+            Suero energizante natural que une <span class="hero__title-accent">la pureza botánica con la ciencia</span>.
+          </h1>
+          <p class="hero__lead">
+            <strong>Rivelant®</strong> acompaña a estudiantes, deportistas y trabajadores con hidratación funcional y energía limpia a base de <strong>Moringa y Espirulina</strong>. Sin cafeína sintética, bajo en azúcar y en un práctico envase <em>pouch</em> de 500 ml.
+          </p>
+          <div class="hero__ctas">
+            <a href="#producto" class="btn btn--primary">
+              Conocer el Producto
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+            <a href="#ingredientes" class="btn btn--outline">¿De qué está hecho?</a>
+            <a href="#contacto" class="btn btn--vitality">Contacto y Redes</a>
+          </div>
+
+          <div class="hero__badges" aria-label="Indicadores clave de Rivelant">
+            <div class="hero-badge">
+              <span class="hero-badge__val" data-count="100" data-suffix="%">100%</span>
+              <span class="hero-badge__lbl">Origen Natural</span>
+            </div>
+            <div class="hero-badge">
+              <span class="hero-badge__val" data-count="0" data-suffix="%">0%</span>
+              <span class="hero-badge__lbl">Cafeína Sintética</span>
+            </div>
+            <div class="hero-badge">
+              <span class="hero-badge__val" data-count="500" data-suffix=" ml">500 ml</span>
+              <span class="hero-badge__lbl">Envase Pouch</span>
+            </div>
+            <div class="hero-badge">
+              <span class="hero-badge__val" data-count="40" data-prefix="$" data-suffix=" MXN">$40 MXN</span>
+              <span class="hero-badge__lbl">Precio Accesible</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Escenario 3D Interactivo con el Pouch Oficial del Manual -->
+        <div class="hero__stage" id="hero-stage">
+          <div class="hero__halo" aria-hidden="true"></div>
+          <div class="hero__orbit" aria-hidden="true"></div>
+          <canvas class="hero__fx" aria-hidden="true"></canvas>
+
+          <div class="floating-chip floating-chip--top">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e5631" stroke-width="2.2" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+            <span>Moringa (2 g) + Espirulina</span>
+          </div>
+
+          <div class="pouch-card3d" id="pouch-card3d" role="button" tabindex="0" aria-label="Presiona para apretar el envase Rivelant">
+            <img
+              src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/pouch-rivelant.png"
+              alt="Envase Pouch Rivelant de 500 ml con Moringa y Espirulina — ¿Listo para comenzar?"
+              class="pouch-card3d__img"
+              width="350"
+              height="525"
+              fetchpriority="high"
+            >
+          </div>
+
+          <div class="floating-chip floating-chip--right">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#80a32f" stroke-width="2.2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span>Enfoque y Vitalidad sin Rebote</span>
+          </div>
+
+          <div class="floating-chip floating-chip--bottom">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e5631" stroke-width="2.2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Rivelant, S.A. de C.V. · Texcoco</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MARQUEE BOTÁNICO CONTINUO -->
+    <div class="brand-marquee" aria-label="Valores y atributos de Rivelant">
+      <div class="brand-marquee__track">
+        <span class="brand-marquee__item">RIVELANT® ENERGÍA NATURAL PARA TU DÍA <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">SUERO ENERGIZANTE CON MORINGA Y ESPIRULINA <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">100% LIBRE DE CAFEÍNA SINTÉTICA Y AZÚCARES DAÑINOS <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">FORMATO POUCH SUSTENTABLE DE 500 ML <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">¿LISTO PARA COMENZAR? <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">RIVELANT® ENERGÍA NATURAL PARA TU DÍA <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">SUERO ENERGIZANTE CON MORINGA Y ESPIRULINA <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">100% LIBRE DE CAFEÍNA SINTÉTICA Y AZÚCARES DAÑINOS <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">FORMATO POUCH SUSTENTABLE DE 500 ML <span class="brand-marquee__sep">✦</span></span>
+        <span class="brand-marquee__item">¿LISTO PARA COMENZAR? <span class="brand-marquee__sep">✦</span></span>
+      </div>
+    </div>
+
+    <!-- 2. BREVE DESCRIPCIÓN DE LA EMPRESA & IDENTIDAD -->
+    <section class="section" id="empresa">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Quiénes Somos · Identidad Corporativa</span>
+          <h2 class="section-title">Breve Descripción de la Empresa</h2>
+          <p class="section-subtitle">
+            Ciencia nutricional y pureza botánica unidas para transformar la energía diaria de estudiantes y trabajadores.
+          </p>
+        </div>
+
+        <div class="grid-2">
+          <div class="card reveal">
+            <span class="eyebrow">Rivelant, S.A. de C.V.</span>
+            <h3 class="card__title" style="font-size: 1.55rem;">Equilibrio, vitalidad y rendimiento saludable</h3>
+            <p class="card__text" style="margin-bottom: 14px;">
+              <strong>Rivelant</strong> es una empresa mexicana productora de <strong>suero energizante natural</strong> que combina la pureza de la naturaleza con la ciencia para promover la energía, la concentración y el bienestar integral.
+            </p>
+            <p class="card__text" style="margin-bottom: 16px;">
+              Nuestra filosofía se basa en la <strong>calidad, la pureza y el equilibrio</strong>, ofreciendo una alternativa funcional, transparente y accesible para jóvenes y adultos de <strong>15 a 50 años</strong> (principalmente estudiantes, deportistas y trabajadores de Texcoco, Chimalhuacán y alrededores) que buscan mantenerse activos sin recurrir a estimulantes artificiales.
+            </p>
+            <h4 style="font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Personalidad de la Marca (Manual Pág. 9):</h4>
+            <div class="personality-tags">
+              <span class="personality-tag">🌿 Fresca y Vital</span>
+              <span class="personality-tag">🔬 Saludable y Confiable</span>
+              <span class="personality-tag">🤝 Cercana y Juvenil</span>
+              <span class="personality-tag">⚡ Innovadora y Práctica</span>
+            </div>
+          </div>
+
+          <div class="meaning-box reveal" style="--delay: 120ms;">
+            <span class="eyebrow" style="background: rgba(195,209,94,0.2); color: var(--clr-lime);">Origen del Nombre y Símbolo (Págs. 14–15)</span>
+            <h3 style="color: var(--clr-cream); font-size: 1.55rem; margin-bottom: 10px;">¿Qué significa Rivelant?</h3>
+            <p style="color: rgba(250,249,243,0.9); font-size: 0.96rem;">
+              El nombre <strong>Rivelant</strong> nace de la fusión conceptual entre <strong>Revenant</strong> (renacer, volver con nueva energía tras el cansancio) y <strong>Relevante</strong> (mostrar la esencia auténtica de cada persona y destacar con propósito).
+            </p>
+            <div class="meaning-equation" aria-label="Ecuación conceptual de la marca">
+              <span class="meaning-pill">REVENANT (Renacer)</span>
+              <span style="font-weight: 800; color: var(--clr-lime);">+</span>
+              <span class="meaning-pill">RELEVANTE (Trascender)</span>
+              <span style="font-weight: 800; color: var(--clr-lime);">=</span>
+              <span class="meaning-pill" style="background: var(--clr-vitality); color: var(--clr-darker);">RIVELANT®</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px; background: rgba(255,255,255,0.08); padding: 14px 18px; border-radius: var(--radius-md);">
+              <img
+                src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/simbolo-origen.png"
+                alt="Símbolo original de dos hojas estilizadas en círculo de Rivelant"
+                width="76"
+                height="66"
+                style="border-radius: 12px; background: #fff; padding: 4px; flex-shrink: 0;"
+                loading="lazy"
+              >
+              <p style="font-size: 0.86rem; color: rgba(250,249,243,0.88);">
+                <strong>Diseño Original del Símbolo:</strong> Compuesto por dos hojas estilizadas que forman un círculo continuo, representando la naturaleza, la unidad y la regeneración celular.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. PROPUESTA DE VALOR Y ELEMENTOS DIFERENCIADORES -->
+    <section class="section section--mint" id="propuesta">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Por qué elegir Rivelant ·</span>
+          <h2 class="section-title">Nuestra Propuesta de Valor</h2>
+          <p class="section-subtitle">
+            Hidratación funcional y vitalidad sostenida frente a las bebidas energizantes sintéticas tradicionales.
+          </p>
+        </div>
+
+        <blockquote class="value-quote reveal">
+          “Rivelant ofrece una alternativa energizante y funcional 100% natural, libre de cafeína y de azúcares dañinos, formulada a base de superalimentos como moringa y espirulina para devolverte tu estado óptimo de energía y concentración de forma saludable y accesible.”
+        </blockquote>
+
+        <div class="grid-4">
+          <article class="card reveal">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+            </div>
+            <h3 class="card__title">Formulación 100% Natural</h3>
+            <p class="card__text">
+              Combina <strong>moringa y espirulina</strong> reales, sin cafeína sintética ni azúcares añadidos que provoquen taquicardia, nerviosismo o caídas bruscas de energía.
+            </p>
+          </article>
+
+          <article class="card reveal" style="--delay: 80ms;">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </div>
+            <h3 class="card__title">Formato Funcional y Sustentable</h3>
+            <p class="card__text">
+              Envase práctico tipo <strong>pouch de 500 ml</strong> con tapa roscable segura: ligero, flexible, irrompible y fácil de transportar en tu mochila o gimnasio.
+            </p>
+          </article>
+
+          <article class="card reveal" style="--delay: 160ms;">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h3 class="card__title">Precio Competitivo y Accesible</h3>
+            <p class="card__text">
+              Con un precio accesible de <strong>$40 a $45 MXN</strong>, pensado específicamente para cuidar el bolsillo de estudiantes universitarios, deportistas y trabajadores.
+            </p>
+          </article>
+
+          <article class="card reveal" style="--delay: 240ms;">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <h3 class="card__title">Distribución Estratégica Local</h3>
+            <p class="card__text">
+              Presencia cercana en tiendas, gimnasios, centros deportivos y centros educativos de <strong>Texcoco, Chimalhuacán</strong> y municipios aledaños del Estado de México.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. ANTECEDENTES DE LA EMPRESA -->
+    <section class="section" id="antecedentes">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Historia de Marca y Evolución ·</span>
+          <h2 class="section-title">Antecedentes de Rivelant</h2>
+          <p class="section-subtitle">
+            Cómo transformamos una necesidad real de salud y energía en Texcoco en una bebida funcional sustentable.
+          </p>
+        </div>
+
+        <div class="history-timeline">
+          <div class="timeline-step reveal">
+            <div class="timeline-step__num">01</div>
+            <div>
+              <h3 class="card__title">Identificación del Problema en Estudiantes y Trabajadores</h3>
+              <p class="card__text">
+                En <strong>Texcoco y Chimalhuacán, Estado de México</strong>, observamos que jóvenes y adultos de 15 a 50 años recurrían diariamente a bebidas energéticas sintéticas con altos niveles de cafeína y azúcares refinados para rendir en la universidad, el gimnasio o el trabajo, sufriendo deshidratación y efectos secundarios adversos.
+              </p>
+            </div>
+          </div>
+
+          <div class="timeline-step reveal" style="--delay: 90ms;">
+            <div class="timeline-step__num">02</div>
+            <div>
+              <h3 class="card__title">Investigación Agroindustrial: Moringa + Espirulina</h3>
+              <p class="card__text">
+                El equipo desarrolló una formulación funcional estandarizando <strong>2 g de Moringa en polvo y 0.125 g de Espirulina</strong> en una base de suero hidratante de 500 ml, logrando un proceso productivo eficiente de 10 minutos por lote unitario con control estricto de calidad e inocuidad.
+              </p>
+            </div>
+          </div>
+
+          <div class="timeline-step reveal" style="--delay: 180ms;">
+            <div class="timeline-step__num">03</div>
+            <div>
+              <h3 class="card__title">De «Revenant» a la Identidad Consolidada «Rivelant, S.A. de C.V.»</h3>
+              <p class="card__text">
+                Partiendo de nuestro primer símbolo de dos hojas en círculo y la fusión de <em>Revenant + Relevante</em>, evolucionamos hacia un logotipo tipográfico moderno en <strong>Montserrat ExtraBold</strong> y un envase <em>pouch</em> botánico inconfundible, proyectando una producción de <strong>3,650 a 3,950 unidades mensuales</strong> en 2026 con presencia local y digital.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. MISIÓN, VISIÓN Y VALORES -->
+    <section class="section section--mint" id="mision-vision">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">1. Filosofía Institucional ·</span>
+          <h2 class="section-title">Misión, Visión y Valores</h2>
+          <p class="section-subtitle">
+            Los pilares éticos y estratégicos que guían cada envase de Rivelant, S.A. de C.V.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <article class="card reveal">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            </div>
+            <span class="eyebrow">1.1 Nuestra Misión</span>
+            <h3 class="card__title">Misión</h3>
+            <p class="card__text">
+              “Ofrecer un suero energizante que combine la pureza de la naturaleza con la ciencia para un estilo de vida saludable, acompañando a estudiantes y trabajadores con energía, hidratación y bienestar.”
+            </p>
+          </article>
+
+          <article class="card reveal" style="--delay: 100ms;">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <span class="eyebrow">1.2 Nuestra Visión</span>
+            <h3 class="card__title">Visión</h3>
+            <p class="card__text">
+              “Ser líderes en bebidas funcionales, reconocidos por nuestra innovación, sostenibilidad y bienestar integral en la vida diaria de nuestros consumidores.”
+            </p>
+          </article>
+
+          <article class="card reveal" style="--delay: 200ms;">
+            <div class="card__icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <span class="eyebrow">1.3 Público Objetivo (Target)</span>
+            <h3 class="card__title">Comunidad Rivelant</h3>
+            <p class="card__text">
+              Jóvenes y adultos de <strong>15 a 50 años</strong> (estudiantes, deportistas y trabajadores) de <strong>Texcoco, Chimalhuacán y alrededores</strong>, que buscan energía y concentración de forma saludable, sin cafeína ni azúcares dañinos.
+            </p>
+          </article>
+        </div>
+
+        <h3 style="text-align: center; margin-top: 40px; font-size: 1.45rem;" class="reveal">Nuestros 5 Valores Corporativos</h3>
+        <div class="values-list">
+          <div class="value-item reveal">
+            <div class="card__icon" style="margin-inline: auto;" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            </div>
+            <h4 class="card__title" style="font-size: 1.08rem;">Lealtad</h4>
+            <p class="card__text" style="font-size: 0.86rem;">Fidelidad con la salud y economía de nuestra comunidad estudiantil y trabajadora.</p>
+          </div>
+
+          <div class="value-item reveal" style="--delay: 60ms;">
+            <div class="card__icon" style="margin-inline: auto;" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h4 class="card__title" style="font-size: 1.08rem;">Integridad</h4>
+            <p class="card__text" style="font-size: 0.86rem;">Transparencia absoluta en nuestros ingredientes, costos y comunicación sanitaria.</p>
+          </div>
+
+          <div class="value-item reveal" style="--delay: 120ms;">
+            <div class="card__icon" style="margin-inline: auto;" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+            <h4 class="card__title" style="font-size: 1.08rem;">Calidad</h4>
+            <p class="card__text" style="font-size: 0.86rem;">Selección rigurosa de moringa y espirulina pura en cada lote producido.</p>
+          </div>
+
+          <div class="value-item reveal" style="--delay: 180ms;">
+            <div class="card__icon" style="margin-inline: auto;" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <h4 class="card__title" style="font-size: 1.08rem;">Bienestar</h4>
+            <p class="card__text" style="font-size: 0.86rem;">Equilibrio físico y mental libre de excesos de azúcar y estimulantes artificiales.</p>
+          </div>
+
+          <div class="value-item reveal" style="--delay: 240ms;">
+            <div class="card__icon" style="margin-inline: auto;" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <h4 class="card__title" style="font-size: 1.08rem;">Respeto</h4>
+            <p class="card__text" style="font-size: 0.86rem;">Trato digno al consumidor, colaboradores y compromiso sustentable con el entorno.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. EQUIPO DETRÁS DE LA EMPRESA, INFORMACIÓN GENERAL Y REPRESENTANTE LEGAL -->
+    <section class="section" id="equipo">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Organigrama · Talento Humano Corporativo</span>
+          <h2 class="section-title">Organigrama de Rivelant</h2>
+          <p class="section-subtitle">
+            Conoce a las áreas que hacen posible Rivelant, S.A. de C.V. y nuestros datos oficiales de contacto corporativo.
+          </p>
+        </div>
+
+        <!-- Organigrama Corporativo -->
+        <div class="org-chart" id="org-chart" aria-label="Organigrama de Rivelant, S.A. de C.V.">
+          <!-- Nivel 1: Dirección General -->
+          <div class="rep-card org-leader" data-org-card="leader">
+            <div class="rep-avatar rep-avatar--photo">
+              <img
+                src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/equipo-andrei.jpg"
+                alt="Andrei Pineda Guerrero — Director General y Coordinador del Proyecto"
+                class="org-photo"
+                width="116"
+                height="116"
+                loading="lazy"
+                decoding="async"
+              >
+            </div>
+            <div>
+              <span class="eyebrow" style="margin-bottom: 6px;">Director General y Coordinador del Proyecto · Rivelant, S.A. de C.V.</span>
+              <h3 style="font-size: 1.65rem; margin-bottom: 6px;">Andrei Pineda Guerrero</h3>
+              <p style="color: var(--clr-text-muted); max-width: 68ch;">
+                Responsable de la representación legal, dirección ejecutiva, vinculación comercial y cumplimiento normativo de <strong>Rivelant, S.A. de C.V.</strong> en Texcoco de Mora, Estado de México.
+              </p>
+              <div class="rep-meta">
+                <a href="tel:+525512345678" class="rep-meta__link" aria-label="Llamar al representante legal +52 55 1234 5678">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  <span>+52 55 1234 5678</span>
+                </a>
+                <a href="mailto:contacto@rivelant.com" class="rep-meta__link">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span>contacto@rivelant.com</span>
+                </a>
+                <span class="rep-meta__link">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span>Av. de la Noria Sur 518 / 3ª Cerrada de la Noria, San Bernardino, Texcoco, C.P. 56238</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="org-connector" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+
+          <!-- Nivel 2: Gerencias -->
+          <div class="org-grid">
+            <article class="card org-card" data-org-card="member" data-org-index="0">
+              <div class="org-card__avatar org-card__avatar--photo">
+                <img
+                  src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/equipo-andrea.jpg"
+                  alt="Andrea Magaly Hernández Aguilar — Gerente de Recursos Humanos"
+                  class="org-photo"
+                  width="96"
+                  height="96"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </div>
+              <span class="org-card__role">Gerente de Recursos Humanos</span>
+              <h3 class="card__title org-card__name">Andrea Magaly Hernández Aguilar</h3>
+              <p class="card__text org-card__desc">
+                Gestión del talento humano, integración del equipo de trabajo, capacitación continua y cultura organizacional de Rivelant.
+              </p>
+            </article>
+
+            <article class="card org-card" data-org-card="member" data-org-index="1">
+              <div class="org-card__avatar org-card__avatar--photo">
+                <img
+                  src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/equipo-gustavo.jpg"
+                  alt="Gustavo Alexander Cervantes Morín — Gerente de Finanzas"
+                  class="org-photo"
+                  width="96"
+                  height="96"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </div>
+              <span class="org-card__role">Gerente de Finanzas</span>
+              <h3 class="card__title org-card__name">Gustavo Alexander Cervantes Morín</h3>
+              <p class="card__text org-card__desc">
+                Planeación financiera, presupuesto maestro y costos industriales que garantizan un precio competitivo ($40–$45 MXN) con alta solvencia.
+              </p>
+            </article>
+
+            <article class="card org-card" data-org-card="member" data-org-index="2">
+              <div class="org-card__avatar org-card__avatar--photo">
+                <img
+                  src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/equipo-andres.jpg"
+                  alt="José Andrés Juárez Abarca — Gerente de Producción"
+                  class="org-photo"
+                  width="96"
+                  height="96"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </div>
+              <span class="org-card__role">Gerente de Producción</span>
+              <h3 class="card__title org-card__name">José Andrés Juárez Abarca</h3>
+              <p class="card__text org-card__desc">
+                Dosificación exacta de <strong>Moringa y Espirulina</strong>, higiene sanitaria, envasado en <em>pouch</em> de 500 ml y control de calidad.
+              </p>
+            </article>
+
+            <article class="card org-card" data-org-card="member" data-org-index="3">
+              <div class="org-card__avatar org-card__avatar--photo">
+                <img
+                  src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/equipo-dalay.jpg"
+                  alt="Dalay Cruz Antes — Gerente de Marketing"
+                  class="org-photo"
+                  width="96"
+                  height="96"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </div>
+              <span class="org-card__role">Gerente de Marketing</span>
+              <h3 class="card__title org-card__name">Dalay Cruz Antes</h3>
+              <p class="card__text org-card__desc">
+                Identidad visual, campañas estacionales, atención de comunidad en <strong>Instagram y TikTok</strong> y presencia en puntos de venta.
+              </p>
+            </article>
+
+            <article class="card org-card" data-org-card="member" data-org-index="4">
+              <div class="org-card__avatar org-card__avatar--photo">
+                <img
+                  src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/equipo-jonathan.jpg"
+                  alt="Jonathan Villegas — Gerente de Logística y Distribución"
+                  class="org-photo"
+                  width="96"
+                  height="96"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </div>
+              <span class="org-card__role">Gerente de Logística y Distribución</span>
+              <h3 class="card__title org-card__name">Jonathan Villegas</h3>
+              <p class="card__text org-card__desc">
+                Coordinación de inventarios, rutas de entrega y abastecimiento oportuno en universidades, gimnasios y comercios locales.
+              </p>
+            </article>
+          </div>
+        </div>
+
+        <!-- Paleta de Colores y Aplicaciones del Manual de Identidad -->
+        <div class="reveal">
+          <h3 style="text-align: center; font-size: 1.35rem; margin-bottom: 18px;">Sistema Visual Oficial</h3>
+          <div class="palette-strip" aria-label="Paleta de colores oficial de Rivelant">
+            <div class="swatch-card">
+              <div class="swatch-card__color" style="background: #1E5631;"></div>
+              <div class="swatch-card__hex">#1E5631</div>
+              <div class="swatch-card__name">Verde Bosque (Logo Principal)</div>
+            </div>
+            <div class="swatch-card">
+              <div class="swatch-card__color" style="background: #234E35;"></div>
+              <div class="swatch-card__hex">#234E35</div>
+              <div class="swatch-card__name">Chalet Green (Producto)</div>
+            </div>
+            <div class="swatch-card">
+              <div class="swatch-card__color" style="background: #74C365;"></div>
+              <div class="swatch-card__hex">#74C365</div>
+              <div class="swatch-card__name">Verde Vitalidad (Secundario)</div>
+            </div>
+            <div class="swatch-card">
+              <div class="swatch-card__color" style="background: #80A32F;"></div>
+              <div class="swatch-card__hex">#80A32F</div>
+              <div class="swatch-card__name">Antique Moss (Acento CTA)</div>
+            </div>
+            <div class="swatch-card">
+              <div class="swatch-card__color" style="background: #97C49E;"></div>
+              <div class="swatch-card__hex">#97C49E</div>
+              <div class="swatch-card__name">Aroma Green (Frescura)</div>
+            </div>
+            <div class="swatch-card">
+              <div class="swatch-card__color" style="background: #FAF9F3;"></div>
+              <div class="swatch-card__hex">#FAF9F3</div>
+              <div class="swatch-card__name">Crema Cálido / Winter Mist</div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <figure class="card" style="padding: 14px;">
+              <img
+                src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/moodboard-rivelant.png"
+                alt="Moodboard oficial de Rivelant — Energía natural para tu día"
+                class="showcase-img"
+                width="600"
+                height="340"
+                loading="lazy"
+              >
+              <figcaption style="font-size: 0.84rem; color: var(--clr-text-muted); margin-top: 8px; text-align: center;">
+                <strong>Moodboard Oficial Rivelant:</strong> Naturalidad, Energía, Equilibrio y Bienestar.
+              </figcaption>
+            </figure>
+
+            <figure class="card" style="padding: 14px;">
+              <img
+                src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/aplicaciones-marca.png"
+                alt="Uniforme comercial, tarjetas ejecutivas y cajas de distribución Rivelant"
+                class="showcase-img"
+                width="600"
+                height="340"
+                loading="lazy"
+              >
+              <figcaption style="font-size: 0.84rem; color: var(--clr-text-muted); margin-top: 8px; text-align: center;">
+                <strong>Aplicaciones Oficiales:</strong> Uniformes del equipo, tarjetas ejecutivas y empaque.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. EL PRODUCTO QUE OFRECE / DESCRIPCIÓN DEL PRODUCTO -->
+    <section class="section section--mint" id="producto">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">El Producto que Ofrecemos · Especificaciones</span>
+          <h2 class="section-title">Descripción del Producto: Rivelant® 500 ml</h2>
+          <p class="section-subtitle">
+            Una bebida hidratante y energizante funcional creada para devolverle a tu cuerpo y mente su estado óptimo.
+          </p>
+        </div>
+
+        <div class="grid-2">
+          <div class="card product-showcase" id="product-showcase">
+            <div class="product-showcase__aura" aria-hidden="true"></div>
+            <div class="product-showcase__ring" aria-hidden="true"></div>
+            <div class="product-showcase__sheen" aria-hidden="true"></div>
+            <canvas class="product-showcase__fx" aria-hidden="true"></canvas>
+            <div class="product-showcase__stage" role="button" tabindex="0" aria-label="Presiona para apretar el envase Rivelant">
+              <div class="product-showcase__pouch">
+                <img
+                  src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/assets/pouch-rivelant.png"
+                  alt="Presentación oficial Rivelant Suero Energizante 500 ml Moringa y Espirulina"
+                  class="product-showcase__img"
+                  width="290"
+                  height="435"
+                  loading="lazy"
+                >
+              </div>
+              <div class="product-showcase__shadow" aria-hidden="true"></div>
+            </div>
+            <div class="product-showcase__tags">
+              <span class="personality-tag">Contenido Neto: 500 ml</span>
+              <span class="personality-tag">Moringa &amp; Espirulina</span>
+              <span class="personality-tag">Boquilla Resellable</span>
+            </div>
+          </div>
+
+          <div class="reveal" style="--delay: 120ms;">
+            <span class="eyebrow">Suero Energizante Funcional</span>
+            <h3 style="font-size: 1.85rem; margin-bottom: 14px;">Hidratación inteligente que despierta tu productividad</h3>
+            <p style="color: var(--clr-text-muted); margin-bottom: 18px;">
+              <strong>Rivelant®</strong> es un suero líquido funcional en presentación <em>stand-up pouch</em> de <strong>500 ml</strong> decorado con nuestro patrón botánico de hojas en tonos <em>Chalet Green</em>, <em>Aroma Green</em> y <em>Antique Moss</em> sobre fondo blanco puro.
+            </p>
+
+            <div class="grid-2" style="gap: 14px; margin-bottom: 22px;">
+              <div class="card" style="padding: 16px;">
+                <h4 style="font-size: 1rem; margin-bottom: 4px;">⚡ Combate la Fatiga</h4>
+                <p class="card__text" style="font-size: 0.88rem;">Aporta vitalidad continua para jornadas intensas de estudio, entrenamiento o trabajo.</p>
+              </div>
+              <div class="card" style="padding: 16px;">
+                <h4 style="font-size: 1rem; margin-bottom: 4px;">🧠 Mejora la Concentración</h4>
+                <p class="card__text" style="font-size: 0.88rem;">Oxigenación y enfoque mental limpio gracias a los fitonutrientes de la espirulina.</p>
+              </div>
+              <div class="card" style="padding: 16px;">
+                <h4 style="font-size: 1rem; margin-bottom: 4px;">🛡️ Poder Desintoxicante</h4>
+                <p class="card__text" style="font-size: 0.88rem;">Rico en antioxidantes naturales y clorofila que protegen frente al estrés oxidativo.</p>
+              </div>
+              <div class="card" style="padding: 16px;">
+                <h4 style="font-size: 1rem; margin-bottom: 4px;">💧 Bajo en Azúcar y Sin Cafeína</h4>
+                <p class="card__text" style="font-size: 0.88rem;">Sabor natural y refrescante sin estimulantes artificiales ni calorías vacías.</p>
+              </div>
+            </div>
+
+            <a href="#ingredientes" class="btn btn--primary">Explorar Fórmula e Ingredientes</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. ¿DE QUÉ ESTÁ HECHO EL PRODUCTO A OFRECER? -->
+    <section class="section section--dark" id="ingredientes">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Composición y Materia Prima · Estudio Técnico</span>
+          <h2 class="section-title">¿De qué está hecho nuestro producto?</h2>
+          <p class="section-subtitle">
+            Selecciona cada componente para inspeccionar su gramaje exacto, función bioactiva y aporte nutricional dentro de cada pouch de 500 ml.
+          </p>
+        </div>
+
+        <div class="ingredients-explorer reveal">
+          <div class="ingredient-tabs" role="tablist" aria-label="Componentes de Rivelant">
+            <button type="button" class="ingredient-tab is-active" role="tab" aria-selected="true" data-ingredient="moringa">
+              <div>
+                <span class="ingredient-tab__name">1. Moringa en Polvo Pura</span>
+                <span class="ingredient-tab__sub">Antioxidante celular, vitaminas A, C, E y minerales</span>
+              </div>
+              <span class="ingredient-tab__dose">2.0 g / pouch</span>
+            </button>
+
+            <button type="button" class="ingredient-tab" role="tab" aria-selected="false" data-ingredient="espirulina">
+              <div>
+                <span class="ingredient-tab__name">2. Microalga Espirulina</span>
+                <span class="ingredient-tab__sub">Ficocianina, hierro biodisponible y complejo B</span>
+              </div>
+              <span class="ingredient-tab__dose">0.125 g / pouch</span>
+            </button>
+
+            <button type="button" class="ingredient-tab" role="tab" aria-selected="false" data-ingredient="electrolitos">
+              <div>
+                <span class="ingredient-tab__name">3. Base de Suero Hidratante</span>
+                <span class="ingredient-tab__sub">Agua purificada, balance salino electrolítico y toque natural</span>
+              </div>
+              <span class="ingredient-tab__dose">500 ml base</span>
+            </button>
+
+            <button type="button" class="ingredient-tab" role="tab" aria-selected="false" data-ingredient="pouch">
+              <div>
+                <span class="ingredient-tab__name">4. Envase Pouch + Boquilla Metal Cap</span>
+                <span class="ingredient-tab__sub">Barrera protectora grado alimenticio resellable</span>
+              </div>
+              <span class="ingredient-tab__dose">1 pza ergonómica</span>
+            </button>
+          </div>
+
+          <div class="ingredient-panel" id="ingredient-panel" role="tabpanel" aria-live="polite">
+            <div>
+              <span class="eyebrow">Componente Activo Seleccionado</span>
+              <h3 id="ing-title">Moringa oleifera en polvo (2.0 g por pouch)</h3>
+              <p class="ingredient-Sci" id="ing-sci">Superalimento botánico antioxidante y revitalizante celular</p>
+              <p id="ing-desc" style="color: var(--clr-text-muted); margin-bottom: 12px;">
+                Conocida como el "Árbol de la Vida", nuestra moringa seleccionada aporta vitaminas A, C y E, calcio, potasio, hierro y aminoácidos esenciales que combaten la fatiga física y oxidativa sin alterar el sistema nervioso.
+              </p>
+              <p id="ing-note" style="font-size: 0.88rem; font-weight: 700; color: var(--clr-forest);">
+                Dosificación estandarizada: 2 g de hoja pura micropulverizada por envase de 500 ml.
+              </p>
+            </div>
+
+            <div class="nutrient-bars" id="ing-bars">
+              <div class="nutrient-bar">
+                <div class="nutrient-bar__head">
+                  <span>Potencia Antioxidante y Vitaminas (A, C, E)</span>
+                  <span>96%</span>
+                </div>
+                <div class="nutrient-bar__track">
+                  <div class="nutrient-bar__fill" style="--bar-w: 96%"></div>
+                </div>
+              </div>
+              <div class="nutrient-bar">
+                <div class="nutrient-bar__head">
+                  <span>Recuperación y Vitalidad Continua</span>
+                  <span>92%</span>
+                </div>
+                <div class="nutrient-bar__track">
+                  <div class="nutrient-bar__fill" style="--bar-w: 92%"></div>
+                </div>
+              </div>
+              <div class="nutrient-bar">
+                <div class="nutrient-bar__head">
+                  <span>Pureza Botánica Natural</span>
+                  <span>100%</span>
+                </div>
+                <div class="nutrient-bar__track">
+                  <div class="nutrient-bar__fill" style="--bar-w: 100%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. FORMULARIO DE OPINIONES Y SUGERENCIAS (ENVÍO AL CORREO) -->
+    <section class="section section--mint" id="opiniones">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Tu Voz nos Impulsa · Buzón Directo</span>
+          <h2 class="section-title">Formulario de Opiniones y Sugerencias</h2>
+          <p class="section-subtitle">
+            Queremos escucharte. Todas las opiniones, sugerencias y comentarios llegan directamente a nuestro correo oficial (<strong>contacto@rivelant.com</strong>).
+          </p>
+        </div>
+
+        <div class="grid-2" style="align-items: start;">
+          <div class="card reveal">
+            <span class="eyebrow">Atención Cercana y Transparente</span>
+            <h3 class="card__title" style="font-size: 1.5rem;">¿Probaste Rivelant en tu universidad, gimnasio o trabajo?</h3>
+            <p class="card__text" style="margin-bottom: 18px;">
+              Cuéntanos qué te pareció el sabor natural de <strong>Moringa y Espirulina</strong>, la practicidad del envase <em>pouch</em> de 500 ml o sugiere nuevos puntos de venta en Texcoco, Chimalhuacán y el Estado de México.
+            </p>
+
+            <div style="display: grid; gap: 14px; margin-bottom: 20px;">
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <div class="card__icon" style="margin-bottom: 0; width: 44px; height: 44px;" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                </div>
+                <div>
+                  <strong style="display: block; font-size: 0.92rem;">Recepción directa en correo electrónico</strong>
+                  <span style="font-size: 0.85rem; color: var(--clr-text-muted);">contacto@rivelant.com</span>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <div class="card__icon" style="margin-bottom: 0; width: 44px; height: 44px;" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
+                <div>
+                  <strong style="display: block; font-size: 0.92rem;">Datos protegidos bajo Aviso de Privacidad</strong>
+                  <span style="font-size: 0.85rem; color: var(--clr-text-muted);">Usamos tu correo únicamente para dar seguimiento a tu mensaje.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <form class="feedback-form reveal" id="rivelant-feedback-form" method="post" action="#opiniones" novalidate style="--delay: 120ms;">
+            <input type="hidden" name="rivelant_feedback_submit" value="1">
+            <!-- Honeypot anti-spam -->
+            <div style="position: absolute; left: -9999px;" aria-hidden="true">
+              <label for="website_hp">No llenar este campo</label>
+              <input type="text" id="website_hp" name="website_hp" tabindex="-1" autocomplete="off">
+            </div>
+
+            <div id="feedback-status" aria-live="polite" <?php echo $feedback_notice ? '' : 'hidden'; ?> class="<?php echo $feedback_notice ? ($feedback_notice['ok'] ? 'form-alert form-alert--success' : 'form-alert form-alert--error') : ''; ?>">
+              <?php if ($feedback_notice): ?>
+                <p><?php echo htmlspecialchars($feedback_notice['message'], ENT_QUOTES, 'UTF-8'); ?></p>
+              <?php endif; ?>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="fb-nombre">Nombre completo *</label>
+                <input class="form-control" type="text" id="fb-nombre" name="nombre" placeholder="Ej. Ana García López" required autocomplete="name">
+                <span class="field-error" id="fb-nombre-error" role="alert"></span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="fb-correo">Correo electrónico *</label>
+                <input class="form-control" type="email" id="fb-correo" name="correo" placeholder="tu@correo.com" required autocomplete="email">
+                <span class="field-error" id="fb-correo-error" role="alert"></span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="fb-telefono">Teléfono / WhatsApp (opcional)</label>
+                <input class="form-control" type="tel" id="fb-telefono" name="telefono" placeholder="Ej. 55 1234 5678" autocomplete="tel">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="fb-tipo">Tipo de mensaje</label>
+                <select class="form-control" id="fb-tipo" name="tipo">
+                  <option value="Opinión del producto">Opinión del producto</option>
+                  <option value="Sugerencia de mejora">Sugerencia de mejora</option>
+                  <option value="Solicitud de distribución / Punto de venta">Solicitud de distribución / Punto de venta</option>
+                  <option value="Atención a clientes">Atención a clientes</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <span class="form-label" id="rating-label">Calificación de tu experiencia con Rivelant</span>
+              <div class="star-rating" role="radiogroup" aria-labelledby="rating-label">
+                <input type="radio" id="star-5" name="calificacion" value="5" checked>
+                <label for="star-5" title="5 estrellas — Excelente" aria-label="5 estrellas">★</label>
+                <input type="radio" id="star-4" name="calificacion" value="4">
+                <label for="star-4" title="4 estrellas — Muy bueno" aria-label="4 estrellas">★</label>
+                <input type="radio" id="star-3" name="calificacion" value="3">
+                <label for="star-3" title="3 estrellas — Bueno" aria-label="3 estrellas">★</label>
+                <input type="radio" id="star-2" name="calificacion" value="2">
+                <label for="star-2" title="2 estrellas — Regular" aria-label="2 estrellas">★</label>
+                <input type="radio" id="star-1" name="calificacion" value="1">
+                <label for="star-1" title="1 estrella — Por mejorar" aria-label="1 estrella">★</label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="fb-mensaje">Tu opinión o sugerencia *</label>
+              <textarea class="form-control" id="fb-mensaje" name="mensaje" rows="4" placeholder="Escribe aquí tus comentarios, sugerencias o ideas para Rivelant..." required></textarea>
+              <span class="field-error" id="fb-mensaje-error" role="alert"></span>
+            </div>
+
+            <div class="form-group">
+              <label style="display: flex; align-items: flex-start; gap: 10px; font-size: 0.88rem; cursor: pointer;">
+                <input type="checkbox" id="fb-terminos" name="terminos" value="1" required style="width: 20px; height: 20px; margin-top: 2px; accent-color: var(--clr-forest);">
+                <span>
+                  He leído y acepto los <a href="#modal-terminos" data-open-modal="modal-terminos" style="color: var(--clr-forest); font-weight: 700;">Términos y Condiciones</a> y la <a href="#modal-cookies" data-open-modal="modal-cookies" style="color: var(--clr-forest); font-weight: 700;">Política de Privacidad y Cookies</a> de Rivelant, S.A. de C.V. *
+                </span>
+              </label>
+              <span class="field-error" id="fb-terminos-error" role="alert"></span>
+            </div>
+
+            <button type="submit" class="btn btn--primary" id="fb-submit-btn" style="width: 100%;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <span>Enviar Opinión al Correo Oficial</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. CONTACTO Y REDES SOCIALES (INSTAGRAM, TIKTOK, FACEBOOK, YOUTUBE, GMAIL) -->
+    <section class="section section--dark" id="contacto">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="eyebrow">Medios de Comunicación Oficiales ·</span>
+          <h2 class="section-title">¿Cómo nos pueden contactar? · Redes Sociales</h2>
+          <p class="section-subtitle">
+            Conéctate con la comunidad de Rivelant en Instagram, TikTok, Facebook, YouTube o escríbenos directamente para pedidos y distribución.
+          </p>
+        </div>
+
+        <!-- Tarjetas de Redes Sociales Oficiales (Instagram y TikTok destacados) -->
+        <div class="grid-4" style="margin-bottom: 40px;">
+          <a
+            href="https://www.instagram.com/oficial_rivelant?evlk=M2l5MWZnd2ZsMnp4"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="social-card reveal"
+            aria-label="Instagram oficial de Rivelant @oficial_rivelant"
+          >
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#c3d15e" stroke-width="2" aria-hidden="true"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
+                <span class="eyebrow" style="margin-bottom: 0;">Instagram Oficial</span>
+              </div>
+              <div class="social-card__handle">@oficial_rivelant</div>
+              <p style="font-size: 0.88rem; color: rgba(250,249,243,0.82);">
+                Estilo de vida activo y saludable en gimnasios, espacios de estudio y actividades cotidianas con nuestra comunidad oficial.
+              </p>
+            </div>
+            <span style="margin-top: 16px; font-family: var(--font-heading); font-weight: 700; font-size: 0.85rem; color: var(--clr-lime);">
+              Seguir en Instagram →
+            </span>
+          </a>
+
+          <a
+            href="https://www.tiktok.com/@rivelant442?_r=1"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="social-card reveal"
+            style="--delay: 80ms;"
+            aria-label="TikTok oficial de Rivelant @rivelant442"
+          >
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#c3d15e" stroke-width="2" aria-hidden="true"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+                <span class="eyebrow" style="margin-bottom: 0;">TikTok Oficial</span>
+              </div>
+              <div class="social-card__handle">@rivelant442</div>
+              <p style="font-size: 0.88rem; color: rgba(250,249,243,0.82);">
+                <strong>Rivelant: ¿listo para comenzar?</strong> Videos cortos, dinámicos y retos de energía natural para estudiantes y trabajadores.
+              </p>
+            </div>
+            <span style="margin-top: 16px; font-family: var(--font-heading); font-weight: 700; font-size: 0.85rem; color: var(--clr-lime);">
+              Ver perfil en TikTok →
+            </span>
+          </a>
+
+          <a
+            href="https://www.facebook.com/share/1Cv8kryw1b/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="social-card reveal"
+            style="--delay: 160ms;"
+            aria-label="Página oficial de Facebook Rivelant: ¿listo para comenzar?"
+          >
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#c3d15e" stroke-width="2" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                <span class="eyebrow" style="margin-bottom: 0;">Facebook</span>
+              </div>
+              <div class="social-card__handle">Rivelant: ¿listo para comenzar?</div>
+              <p style="font-size: 0.88rem; color: rgba(250,249,243,0.82);">
+                Comunidad enfocada en productividad, bienestar y energía saludable para las jornadas laborales.
+              </p>
+            </div>
+            <span style="margin-top: 16px; font-family: var(--font-heading); font-weight: 700; font-size: 0.85rem; color: var(--clr-lime);">
+              Visitar Facebook →
+            </span>
+          </a>
+
+          <a
+            href="https://youtube.com/@rivelantsadecv"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="social-card reveal"
+            style="--delay: 240ms;"
+            aria-label="Canal oficial de YouTube Rivelant: SA de CV @rivelantsadecv"
+          >
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#c3d15e" stroke-width="2" aria-hidden="true"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+                <span class="eyebrow" style="margin-bottom: 0;">YouTube</span>
+              </div>
+              <div class="social-card__handle">@rivelantsadecv</div>
+              <p style="font-size: 0.88rem; color: rgba(250,249,243,0.82);">
+                <strong>Rivelant: SA de CV</strong> — Cápsulas informativas sobre nuestros ingredientes (Moringa y Espirulina) y presentaciones de la marca.
+              </p>
+            </div>
+            <span style="margin-top: 16px; font-family: var(--font-heading); font-weight: 700; font-size: 0.85rem; color: var(--clr-lime);">
+              Suscribirse en YouTube →
+            </span>
+          </a>
+        </div>
+
+        <!-- Canales Directos de Contacto -->
+        <div class="contact-direct reveal">
+          <div class="contact-direct__header">
+            <h3 style="font-size: 1.65rem; margin-bottom: 12px;">Canales Directos de Atención Comercial y Clientes</h3>
+            <p style="color: rgba(250,249,243,0.85);">
+              Puedes comunicarte con <strong>Rivelant, S.A. de C.V.</strong> por cualquiera de nuestros medios oficiales:
+            </p>
+          </div>
+          <div class="grid-3 contact-direct__grid">
+            <div class="social-card contact-direct__card">
+              <strong style="color: var(--clr-lime); font-family: var(--font-heading);">📞 Teléfono y WhatsApp Corporativo</strong>
+              <span><a href="tel:+525512345678" style="color: var(--clr-cream); text-decoration: none;">+52 55 1234 5678</a> (Lunes a Sábado de 8:00 a 20:00 hrs)</span>
+            </div>
+            <div class="social-card contact-direct__card">
+              <strong style="color: var(--clr-lime); font-family: var(--font-heading);">✉️ Correos Electrónicos Oficiales (Gmail y Corporativo)</strong>
+              <span>
+                <a href="mailto:contacto@rivelant.com" style="color: var(--clr-cream);">contacto@rivelant.com</a>
+              </span>
+            </div>
+            <div class="social-card contact-direct__card">
+              <strong style="color: var(--clr-lime); font-family: var(--font-heading);">📍 Dirección y Centro de Distribución</strong>
+              <span>Avenida de la Noria Sur 518 / 3ª Cerrada de la Noria, Col. San Bernardino, Texcoco de Mora, Estado de México, C.P. 56238, México.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER CORPORATIVO CON TÉRMINOS Y CONDICIONES Y POLÍTICA DE COOKIES -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a href="#inicio" class="brand-logo" style="color: var(--clr-cream); margin-bottom: 12px;">
+            <svg class="brand-logo__leaf" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+              <circle cx="32" cy="32" r="30" fill="#1e5631" />
+              <path d="M18 39C16 25 27 15 41 16C39 30 30 41 18 39Z" fill="#74c365" />
+              <path d="M46 25C48 39 37 49 23 48C25 34 34 23 46 25Z" fill="#c3d15e" />
+            </svg>
+            <span>Rivelant®</span>
+          </a>
+          <p style="font-size: 0.9rem; margin-bottom: 14px;">
+            <strong>Rivelant, S.A. de C.V.</strong> — Suero energizante funcional 100% natural con Moringa y Espirulina. Energía natural para tu día. «¿Listo para comenzar?»
+          </p>
+          <p style="font-size: 0.82rem; color: rgba(250,249,243,0.68);">
+            Tel: +52 55 1234 5678 · Correo: contacto@rivelant.com
+          </p>
+        </div>
+
+        <div>
+          <h3 class="footer-title">Secciones</h3>
+          <ul class="footer-links">
+            <li><a href="#inicio">Inicio</a></li>
+            <li><a href="#empresa">Empresa</a></li>
+            <li><a href="#antecedentes">Antecedentes</a></li>
+            <li><a href="#mision-vision">Misión y Visión</a></li>
+            <li><a href="#equipo">Organigrama</a></li>
+            <li><a href="#producto">Producto (Pouch 500 ml)</a></li>
+            <li><a href="#ingredientes">¿De qué está hecho?</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="footer-title">Redes Sociales</h3>
+          <ul class="footer-links">
+            <li><a href="https://www.instagram.com/oficial_rivelant?evlk=M2l5MWZnd2ZsMnp4" target="_blank" rel="noopener noreferrer">Instagram: @oficial_rivelant</a></li>
+            <li><a href="https://www.tiktok.com/@rivelant442?_r=1" target="_blank" rel="noopener noreferrer">TikTok: @rivelant442</a></li>
+            <li><a href="https://www.facebook.com/share/1Cv8kryw1b/" target="_blank" rel="noopener noreferrer">Facebook: Rivelant Oficial</a></li>
+            <li><a href="https://youtube.com/@rivelantsadecv" target="_blank" rel="noopener noreferrer">YouTube: @rivelantsadecv</a></li>
+            <li><a href="#opiniones">Buzón de Opiniones y Sugerencias</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="footer-title">Marco Legal y Privacidad</h3>
+          <ul class="footer-links">
+            <li>
+              <button type="button" class="footer-link-btn" data-open-modal="modal-terminos">
+                📄 Términos y Condiciones de Uso
+              </button>
+            </li>
+            <li>
+              <button type="button" class="footer-link-btn" data-open-modal="modal-cookies">
+                🍪 Política de Cookies y Privacidad
+              </button>
+            </li>
+            <li>
+              <button type="button" class="footer-link-btn" id="reopen-cookie-banner">
+                ⚙️ Configurar Preferencias de Cookies
+              </button>
+            </li>
+          </ul>
+          <p style="font-size: 0.78rem; margin-top: 14px; color: rgba(250,249,243,0.62);">
+            Este producto es una bebida funcional hidratante a base de ingredientes naturales y no es un medicamento.
+          </p>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; font-size: 0.84rem; color: rgba(250,249,243,0.65);">
+        <span>© <?php echo date('Y'); ?> Rivelant, S.A. de C.V. Todos los derechos reservados. Texcoco de Mora, Estado de México.</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL: TÉRMINOS Y CONDICIONES -->
+  <div class="modal-backdrop" id="modal-terminos" role="dialog" aria-modal="true" aria-labelledby="modal-terminos-title" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-terminos-title">Términos y Condiciones de Uso — Rivelant, S.A. de C.V.</h3>
+        <button type="button" class="modal-close" data-close-modal aria-label="Cerrar ventana de Términos y Condiciones">✕</button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Última actualización:</strong> Noviembre de 2026. Bienvenido al sitio web oficial de <strong>Rivelant, S.A. de C.V.</strong> (en adelante “Rivelant”), con domicilio en Avenida de la Noria Sur 518 / 3ª Cerrada de la Noria, Col. San Bernardino, C.P. 56238, Texcoco de Mora, Estado de México.</p>
+
+        <h4>1. Aceptación de los Términos</h4>
+        <p>El acceso, navegación y uso de este portal web, así como el envío de opiniones o sugerencias a través de nuestros formularios, implica la aceptación plena y sin reservas de los presentes Términos y Condiciones.</p>
+
+        <h4>2. Información sobre el Producto y Responsabilidad Sanitaria</h4>
+        <p><strong>Rivelant® Suero Energizante Natural (Pouch 500 ml)</strong> es una bebida funcional hidratante elaborada con ingredientes de origen natural (extracto de hoja de <em>Moringa oleifera</em> 2.0 g y microalga <em>Arthrospira platensis</em> Espirulina 0.125 g). No contiene cafeína sintética añadida. Este producto no es un medicamento; el consumo de este producto es responsabilidad de quien lo recomienda y de quien lo usa, en apego a la normativa sanitaria mexicana aplicable.</p>
+
+        <h4>3. Propiedad Intelectual y Manual de Identidad</h4>
+        <p>La denominación <strong>Rivelant®</strong>, el eslogan <em>«¿Listo para comenzar?»</em>, el lema <em>«Energía natural para tu día»</em>, los logotipos tipográficos y simbólicos, el patrón botánico, las fotografías de empaque y los contenidos de este sitio son propiedad exclusiva de <strong>Rivelant, S.A. de C.V.</strong> Queda prohibida su reproducción, alteración o uso no autorizado conforme a las reglas de nuestro Manual de Identidad Visual.</p>
+
+        <h4>4. Precios y Distribución</h4>
+        <p>El precio de referencia sugerido al público ($40.00 a $45.00 MXN por unidad de 500 ml) aplica en puntos de venta autorizados de Texcoco, Chimalhuacán y pedidos directos. Para compras mayoristas o distribución institucional, comuníquese al teléfono <strong>+52 55 1234 5678</strong> o al correo <strong>contacto@rivelant.com</strong>.</p>
+
+        <h4>5. Protección de Datos Personales (LFPDPPP)</h4>
+        <p>Los datos recabados en el Formulario de Opiniones y Sugerencias (nombre, correo electrónico y teléfono opcional) se utilizan exclusivamente para atender sus comentarios, mejorar la calidad de nuestros productos y dar respuesta a sus solicitudes comerciales. Usted puede ejercer sus derechos ARCO enviando un correo a <strong>contacto@rivelant.com</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: POLÍTICA DE COOKIES -->
+  <div class="modal-backdrop" id="modal-cookies" role="dialog" aria-modal="true" aria-labelledby="modal-cookies-title" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-cookies-title">Política de Cookies y Privacidad — Rivelant, S.A. de C.V.</h3>
+        <button type="button" class="modal-close" data-close-modal aria-label="Cerrar ventana de Política de Cookies">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>En <strong>Rivelant, S.A. de C.V.</strong> utilizamos cookies propias y tecnologías de almacenamiento local (<code>localStorage</code>) para garantizar el funcionamiento seguro del sitio y mejorar tu experiencia de navegación.</p>
+
+        <h4>1. ¿Qué son las cookies?</h4>
+        <p>Las cookies son pequeños archivos de texto que tu navegador almacena en tu dispositivo cuando visitas nuestra página web para recordar tus preferencias de sesión y consentimiento.</p>
+
+        <h4>2. Tipos de cookies que utilizamos</h4>
+        <p><strong>• Cookies Técnicas y Esenciales (Obligatorias):</strong> Permiten el funcionamiento básico de la página, el envío seguro del formulario de opiniones contra spam y el guardado de tu preferencia sobre el aviso de cookies (<code>rivelant_cookies</code>).</p>
+        <p><strong>• Cookies de Métricas y Desempeño (Opcionales):</strong> Nos ayudan a evaluar de forma anónima las métricas definidas en nuestro Manual de Identidad (Alcance, Tráfico e Interacciones con nuestras secciones informativas).</p>
+        <p><strong>• Cookies de Redes Sociales y Marketing (Opcionales):</strong> Facilitan la integración con nuestros canales oficiales en Instagram (<code>@oficial_rivelant</code>), TikTok (<code>@rivelant442</code>), Facebook y YouTube.</p>
+
+        <h4>3. ¿Cómo administrar o desactivar las cookies?</h4>
+        <p>Puedes modificar tu selección en cualquier momento haciendo clic en el botón <em>“Configurar Preferencias de Cookies”</em> ubicado en el pie de página, o directamente desde la configuración de privacidad de tu navegador web.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- BANNER INTERACTIVO DE POLÍTICA DE COOKIES -->
+  <aside class="cookie-banner" id="cookie-banner" role="region" aria-label="Aviso de Política de Cookies">
+    <div class="cookie-banner__inner">
+      <div class="cookie-banner__text">
+        <strong style="font-family: var(--font-heading); color: var(--clr-lime); font-size: 1rem;">🍪 Valoramos tu privacidad en Rivelant®</strong>
+        <p style="margin-top: 4px;">
+          Utilizamos cookies esenciales y analíticas para ofrecerte una experiencia fluida y medir el impacto de nuestros contenidos conforme a nuestra <a href="#modal-cookies" data-open-modal="modal-cookies" style="color: var(--clr-lime); font-weight: 700;">Política de Cookies</a> y <a href="#modal-terminos" data-open-modal="modal-terminos" style="color: var(--clr-lime); font-weight: 700;">Términos y Condiciones</a>.
+        </p>
+        <div class="cookie-options">
+          <label><input type="checkbox" checked disabled> Esenciales (Siempre activas)</label>
+          <label><input type="checkbox" id="chk-cookie-analytics" checked> Analíticas y Métricas</label>
+          <label><input type="checkbox" id="chk-cookie-marketing" checked> Redes Sociales (Instagram / TikTok)</label>
+        </div>
+      </div>
+      <div class="cookie-banner__actions">
+        <button type="button" class="btn btn--ghost-light" id="cookie-save-prefs" style="padding: 10px 18px; min-height: 44px; font-size: 0.85rem;">
+          Guardar selección
+        </button>
+        <button type="button" class="btn btn--vitality" id="cookie-accept-all" style="padding: 10px 20px; min-height: 44px; font-size: 0.85rem;">
+          Aceptar todas
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <script src="<?php echo htmlspecialchars($theme_uri, ENT_QUOTES, 'UTF-8'); ?>/script.js?v=<?php echo htmlspecialchars($script_ver, ENT_QUOTES, 'UTF-8'); ?>"></script>
+</body>
+<script src="<?php echo get_template_directory_uri(); ?>/js/nombre-del-archivo.js"></script>
+</html>
